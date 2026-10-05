@@ -1,0 +1,129 @@
+name: 编译 iOS 壳
+
+# 跟安卓那条不一样：这里**不挂在每次 push 上**。
+# GitHub 给私有仓库的 macOS 额度是按 Linux 的十倍扣的（跑 1 分钟算 10 分钟），
+# 每次推送都编一遍，两千分钟很快就没了。所以只在两种时候跑：
+#   · 手动触发（Actions 页面点 Run workflow）
+#   · 打了 v* 的 tag（要发版了，值得编一次）
+# 仓库转成公开之后 macOS 就免费了，那时候放宽触发条件也没问题。
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  ios:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      # ---------------------------------------------------------------- 静态检查
+      - name: 版本号三边对得上吗（安卓 / iOS / 网页）
+        run: |
+          set -e
+          GV=$(grep -oE "versionName '[^']+'" android/app/build.gradle | head -1 | sed "s/versionName '//;s/'//")
+          MV=$(grep -oE 'MARKETING_VERSION: "[^"]+"' ios/project.yml | head -1 | sed 's/MARKETING_VERSION: "//;s/"//')
+          WV=$(grep -oE "version: '[^']+'" web-simple/js/store.js | head -1 | sed "s/version: '//;s/'//")
+          echo "安卓 $GV / iOS $MV / 网页 $WV"
+          [ "$GV" = "$WV" ] || { echo "!! 安卓和网页版本号不一致"; exit 1; }
+          [ "$MV" = "$WV" ] || { echo "!! iOS 和网页版本号不一致"; exit 1; }
+          echo "OK 三边一致"
+
+      # 这个 App 的核心承诺：一条权限都不要。
+      # iOS 上的表现就是 Info.plist 里没有任何 NS*UsageDescription 的键。
+      #
+      # 这里按 <key> 标签来判，不能直接 grep 那个词 ——
+      # Info.plist 的注释里就写着「没有任何 NS*UsageDescription」，
+      # 直接找会把这句注释当成真声明，把自己卡住。
+      - name: 一条权限都不申请（Info.plist 里没有权限键）
+        run: |
+          set -e
+          if grep -qE '<key>NS[A-Za-z]*UsageDescription</key>' ios/GBM/Info.plist; then
+            echo "!! Info.plist 里出现了权限键，这个 App 不允许要任何权限"
+            grep -nE '<key>NS[A-Za-z]*UsageDescription</key>' ios/GBM/Info.plist
+            exit 1
+          fi
+          echo "OK 没有任何权限键"
+
+      # ---------------------------------------------------------------- 编译
+      - name: 装 XcodeGen
+        run: |
+          set -e
+          brew install xcodegen || brew upgrade xcodegen
+          xcodegen --version
+
+      - name: 生成工程（project.yml 是真源，.xcodeproj 是生成物）
+        working-directory: ios
+        run: xcodegen generate
+
+      - name: 编模拟器版（不签名）
+        working-directory: ios
+        run: |
+          set -e
+          xcodebuild \
+            -project GBM.xcodeproj \
+            -scheme GBM \
+            -configuration Debug \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath DerivedData \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
+            build
+
+      - name: 产物在吗
+        run: |
+          set -e
+          APP=$(find ios/DerivedData/Build/Products -maxdepth 2 -name 'GBM.app' | head -1)
+          [ -n "$APP" ] || { echo "!! 没找到 GBM.app"; find ios/DerivedData -name '*.app'; exit 1; }
+          echo "产物：$APP"
+          # 网页真的打进包了吗
+          for f in index.html assets/style.css js/app.js js/poem-data.js js/poem.js; do
+            [ -f "$APP/web/$f" ] || { echo "!! 包里缺 web/$f"; exit 1; }
+          done
+          echo "OK 网页全部打进包了"
+          echo "APP_PATH=$APP" >> "$GITHUB_ENV"
+
+      # ---------------------------------------------------------------- 真跑一遍
+      # 编过不等于能跑。起一个模拟器把 App 装上去，至少证明壳没崩。
+      - name: 起模拟器，装上去跑一遍
+        run: |
+          set -e
+          NAME="GBM-CI"
+          RUNTIME=$(xcrun simctl list runtimes -j \
+            | python3 -c "import json,sys; r=json.load(sys.stdin)['runtimes']; print([x['identifier'] for x in r if x['name'].startswith('iOS')][-1])")
+          DEVTYPE=$(xcrun simctl list devicetypes -j \
+            | python3 -c "import json,sys; d=json.load(sys.stdin)['devicetypes']; print([x['identifier'] for x in d if 'iPhone' in x['identifier']][-1])")
+          echo "runtime=$RUNTIME  devicetype=$DEVTYPE"
+          xcrun simctl delete "$NAME" 2>/dev/null || true
+          xcrun simctl create "$NAME" "$DEVTYPE" "$RUNTIME"
+          xcrun simctl boot "$NAME"
+          xcrun simctl bootstatus "$NAME" -b
+
+          xcrun simctl install "$NAME" "$APP_PATH"
+          echo "OK 装上了"
+
+          xcrun simctl launch "$NAME" com.fengxiao.gbm
+          sleep 8
+          # 进程还在不在 —— 一启动就崩的话早就没了
+          if xcrun simctl spawn "$NAME" launchctl print system | grep -q 'com.fengxiao.gbm'; then
+            echo "OK App 起来了，进程还在"
+          else
+            echo "!! 没找到 App 进程，可能是启动就崩了"; exit 1
+          fi
+
+          mkdir -p shots-ios
+          xcrun simctl screenshot "$NAME" shots-ios/home.png
+          echo "OK 截了一张图"
+
+          xcrun simctl shutdown "$NAME"
+          xcrun simctl delete "$NAME"
+
+      - name: 把截图传上来
+        uses: actions/upload-artifact@v4
+        with:
+          name: 成长Bug-iOS-模拟器截图
+          path: shots-ios/*.png
+          if-no-files-found: error

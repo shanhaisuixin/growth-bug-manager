@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- 这里刻意**没有任何一条 NS*UsageDescription**。
+
+     定位、相机、相册、通讯录、麦克风、日历…… 一个都没要 ——
+     设置里翻到底也看不到任何权限入口。
+
+     导出/导入走的是系统的文件选择器（用户在自己的文件里挑位置、挑文件），
+     这属于用户当场给出的授权，不算「申请权限」，也不需要任何描述文案。
+     「去发布页看看」是把链接交给 Safari，联网的是 Safari，不是这个 App。 -->
+<plist version="1.0">
+<dict>
+	<key>CFBundleName</key>
+	<string>成长Bug</string>
+	<key>CFBundleDisplayName</key>
+	<string>成长Bug</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(MARKETING_VERSION)</string>
+	<key>CFBundleVersion</key>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>zh_CN</string>
+	<key>CFBundleLocalizations</key>
+	<array>
+		<string>zh_CN</string>
+		<string>en</string>
+	</array>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+
+	<key>LSRequiresIPhoneOS</key>
+	<true/>
+	<key>UIRequiredDeviceCapabilities</key>
+	<array>
+		<string>arm64</string>
+	</array>
+
+	<!-- 只做竖屏：整个版式是按单手竖屏调的，横过来会散 -->
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+	</array>
+	<key>UISupportedInterfaceOrientations~ipad</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+	</array>
+
+	<!-- 状态栏：白纸上用深色字 -->
+	<key>UIStatusBarStyle</key>
+	<string>UIStatusBarStyleDarkContent</string>
+	<key>UIViewControllerBasedStatusBarAppearance</key>
+	<true/>
+
+	<!-- iOS 14 起没有这个会按放大兼容模式跑，顶上留一条黑边。
+	     给一个空的启动屏配置，LaunchScreen.storyboard 都不用建。 -->
+	<key>UILaunchScreen</key>
+	<dict/>
+
+	<!-- 本地页面走的是 http://127.0.0.1:<随机端口>（见 LocalServer.swift）。
+	     ATS 默认不让明文 HTTP，这里只给回环地址开口子 ——
+	     不是给 App 联网，是为了让 App 能读自己包里的页面。 -->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+	<key>UIApplicationSceneManifest</key>
+	<false/>
+</dict>
+</plist>

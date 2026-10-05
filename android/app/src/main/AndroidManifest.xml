@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+  <!-- 这里一条 <uses-permission> 都没有，是故意的，不是漏了。
+
+       记录全在手机本地（IndexedDB），App 不联网、不上传、不读相册、不碰通讯录。
+       那「检查更新」怎么办？——页面把发布页交给系统浏览器打开，联网的是浏览器，
+       不是 App（见 MainActivity 的 handOff 和网页里的 openReleases）。
+
+       那「导出备份」怎么办？——走系统的文件选择器（SAF），用户自己挑存哪儿。
+       系统弹窗选文件不属于「申请权限」，装完之后权限管理里看不到任何入口。
+
+       别在这儿加 INTERNET。一加，应用商店和权限页里就会挂上「网络」这一条。 -->
+
+  <uses-feature android:name="android.hardware.touchscreen" android:required="true" />
+
+  <application
+      android:allowBackup="false"
+      android:icon="@mipmap/ic_launcher"
+      android:roundIcon="@mipmap/ic_launcher_round"
+      android:label="@string/app_name"
+      android:supportsRtl="false"
+      android:usesCleartextTraffic="false"
+      android:theme="@style/Theme.GBM">
+
+    <!-- configChanges 里带上 orientation/screenSize：
+         转屏时不重建 Activity，WebView 就不会被重新加载、写到一半的字不会丢。 -->
+    <activity
+        android:name=".MainActivity"
+        android:exported="true"
+        android:launchMode="singleTask"
+        android:windowSoftInputMode="adjustResize"
+        android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden|uiMode|density|fontScale">
+      <intent-filter>
+        <action android:name="android.intent.action.MAIN" />
+        <category android:name="android.intent.category.LAUNCHER" />
+      </intent-filter>
+    </activity>
+  </application>
+</manifest>

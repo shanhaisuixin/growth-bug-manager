@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <!-- 跟网页里的纸底色（CSS 变量 paper）保持一致，冷启动时才不会闪一下别的颜色 -->
+  <color name="paper">#FDFDFF</color>
+  <color name="ic_launcher_background">#F9F8F4</color>
+</resources>

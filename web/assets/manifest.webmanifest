@@ -1,0 +1,18 @@
+{
+  "name": "个人成长 Bug 管理器",
+  "short_name": "成长Bug",
+  "description": "把真实经历保存下来，让过去犯过的错真正变成未来的经验。",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#fdfdff",
+  "theme_color": "#fdfdff",
+  "lang": "zh-CN",
+  "icons": [
+    { "src": "./assets/icon.svg", "type": "image/svg+xml", "sizes": "any", "purpose": "any maskable" },
+    { "src": "./assets/icon-192.png", "type": "image/png", "sizes": "192x192", "purpose": "any" },
+    { "src": "./assets/icon-512.png", "type": "image/png", "sizes": "512x512", "purpose": "any" },
+    { "src": "./assets/icon-512.png", "type": "image/png", "sizes": "512x512", "purpose": "maskable" }
+  ]
+}

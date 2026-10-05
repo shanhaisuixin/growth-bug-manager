@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 自适应图标的底：用户自己设计的图标那张纸底色（从原图取色）。
+     前景整幅就是这张纸，两层同色，遮罩怎么裁都看不出接缝。 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+  <solid android:color="@color/ic_launcher_background" />
+</shape>

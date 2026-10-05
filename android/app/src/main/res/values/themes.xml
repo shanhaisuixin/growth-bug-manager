@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <!-- 网页那边是纯浅色（样式表里没有深色媒体查询），所以这里也钉死浅色，
+       免得系统开深色模式时状态栏变黑、跟我们这张纸对不上。
+       targetSdk 停在 34 而不是 35：35 会强制 edge-to-edge，
+       内容会钻到状态栏底下，还得额外调 insets，先不折腾。 -->
+  <style name="Theme.GBM" parent="Theme.AppCompat.Light.NoActionBar">
+    <item name="android:windowBackground">@color/paper</item>
+    <item name="android:statusBarColor">@color/paper</item>
+    <item name="android:windowLightStatusBar">true</item>
+    <item name="android:navigationBarColor">@color/paper</item>
+    <item name="android:windowActionBar">false</item>
+    <item name="android:windowNoTitle">true</item>
+  </style>
+</resources>

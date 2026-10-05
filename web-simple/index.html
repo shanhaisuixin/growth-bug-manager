@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, interactive-widget=resizes-content">
+<meta name="theme-color" content="#e9e8ff">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="行迹">
+<title>行迹</title>
+<link rel="stylesheet" href="assets/style.css">
+<link rel="manifest" href="assets/manifest.webmanifest">
+<link rel="icon" href="assets/icon-192.png" type="image/png">
+<!-- iPhone 上「添加到主屏幕」用的就是这张 PNG。iOS 不认 SVG 图标，
+     少了它主屏上会是一张网页截图，很难看。 -->
+<link rel="apple-touch-icon" href="assets/icon-180.png">
+</head>
+<body>
+
+<div id="aura" aria-hidden="true"></div>
+
+<div id="app">
+  <header id="topbar"></header>
+  <main id="stage" role="main"></main>
+
+  <nav id="tabbar" role="tablist" aria-label="主导航">
+    <span class="nav-pill" id="navPill" aria-hidden="true"></span>
+
+    <button class="tab" data-route="sediment" role="tab" aria-label="沉淀">
+      <svg viewBox="0 0 24 24" width="21" height="21" aria-hidden="true">
+        <path d="M4 7.5 12 3.5l8 4-8 4z"/>
+        <path d="M4 12.2l8 4 8-4"/>
+        <path d="M4 16.6l8 4 8-4"/>
+      </svg>
+      <span class="tab-txt">沉淀</span>
+    </button>
+
+    <button class="tab" data-route="home" role="tab" aria-label="首页">
+      <svg viewBox="0 0 24 24" width="21" height="21" aria-hidden="true">
+        <path d="M4 10.5 12 4l8 6.5V19a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 19z"/>
+      </svg>
+      <span class="tab-txt">首页</span>
+    </button>
+
+    <button class="tab" data-route="trace" role="tab" aria-label="轨迹">
+      <svg viewBox="0 0 24 24" width="21" height="21" aria-hidden="true">
+        <circle cx="6.5" cy="17.5" r="2.5"/>
+        <circle cx="17.5" cy="6.5" r="2.5"/>
+        <path d="M9 17.5h5.5a3 3 0 0 0 0-6h-5a3 3 0 0 1 0-6H15"/>
+      </svg>
+      <span class="tab-txt">轨迹</span>
+    </button>
+  </nav>
+
+  <div id="toast" role="status" aria-live="polite"></div>
+</div>
+
+<script src="js/store.js"></script>
+<script src="js/zip.js"></script>
+<script src="js/poem.js"></script>
+<script src="js/views.js"></script>
+<script src="js/app.js"></script>
+<!-- js/poem-data.js（920 KB 的诗词库）不在这里同步加载：
+     光解析就要两三百毫秒，放在开机等于首屏白等。
+     它由 poem.js 里的 Poem.load() 在真正用得到时挂上来（见启动那段）。 -->
+</body>
+</html>
