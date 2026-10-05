@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <!-- API 27 起才允许把底部导航栏的图标改成深色。
+       不加这一条的话，浅色底配浅色图标＝底部三个键看不见。 -->
+  <style name="Theme.GBM" parent="Theme.AppCompat.Light.NoActionBar">
+    <item name="android:windowBackground">@color/paper</item>
+    <item name="android:statusBarColor">@color/paper</item>
+    <item name="android:windowLightStatusBar">true</item>
+    <item name="android:navigationBarColor">@color/paper</item>
+    <item name="android:windowLightNavigationBar">true</item>
+    <item name="android:windowActionBar">false</item>
+    <item name="android:windowNoTitle">true</item>
+  </style>
+</resources>

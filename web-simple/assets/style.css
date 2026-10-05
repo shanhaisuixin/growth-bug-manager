@@ -1,0 +1,992 @@
+/* 个人成长 Bug 管理器 — 视觉基座
+   基调：接近纯白、极少文字、大量留白、液态玻璃、克制的动效。
+   主题色由 JS 注入 CSS 变量，背景氛围跟着主题色走。 */
+
+:root{
+  /* —— 由主题色派生的变量，JS 会覆盖这四个 —— */
+  --accent:#6e6bfe;
+  --accent-deep:#4b48d6;
+  --accent-soft:rgba(110,107,254,.10);
+  --accent-line:rgba(110,107,254,.26);
+
+  /* —— 纸面 —— */
+  --paper:#fdfdff;
+  --paper-2:#ffffff;
+  --glass:rgba(255,255,255,.55);
+  --glass-strong:rgba(255,255,255,.72);
+  --glass-edge:rgba(255,255,255,.85);
+
+  /* —— 墨色 —— */
+  --ink:#191b1f;
+  --ink-2:#464b55;
+  --muted:#8b909c;
+  --faint:#b8bcc6;
+
+  /* —— 结构 —— */
+  --line:rgba(25,27,31,.075);
+  --line-2:rgba(25,27,31,.045);
+  --shadow:0 1px 2px rgba(25,27,31,.03), 0 10px 26px -18px rgba(25,27,31,.20);
+  --shadow-lift:0 2px 8px rgba(25,27,31,.05), 0 22px 44px -26px rgba(25,27,31,.30);
+  --shadow-inset:inset 0 1px 0 rgba(255,255,255,.9);
+
+  /* —— 两处「浅色下才有的提亮层」 ——
+     玻璃卡、顶卡、分段滑块这些靠一层半透白把纸面提起来。
+     深色模式下这层如果还是半透白，深底上会翻出一圈灰白边，所以换两个变量名，
+     深色模式里各自换成几乎看不见的一点点。 */
+  --sheen:rgba(255,255,255,.55);      /* 顶卡右下角那块提亮 */
+  --sheen-2:rgba(255,255,255,.90);    /* 分段控件的滑块 */
+  --drop:rgba(25,27,31,.30);          /* 色块底下的投影 */
+
+  /* —— 圆角 —— */
+  --r-card:22px;
+  --r-block:17px;
+  --r-btn:15px;
+  --r-record:40px;      /* 「今日记录」：超大圆角，接近胶囊但保留直边 */
+  --r-nav:26px;
+
+  --tab-h:58px;
+  --safe-b:env(safe-area-inset-bottom, 0px);
+  --safe-t:env(safe-area-inset-top, 0px);
+  --gutter:clamp(16px, 5.4vw, 22px);   /* 窄屏自动收窄，内容不会贴边也不会挤 */
+
+  --font:-apple-system, BlinkMacSystemFont, "PingFang SC", "Noto Sans CJK SC",
+         "Microsoft YaHei", "Source Han Sans SC", system-ui, sans-serif;
+
+  /* —— 动效基座 ——
+     全站只用三种时长、两条缓动：
+       快：按下、勾选这种「手上正在做的事」，迟一点就觉得黏。
+       中：内容出现、颜色变化。
+       慢：换屏、药丸滑动这种「视线要跟着走」的。
+     --ease 交给「有明确终点」的位移；--ease-spring 带一点点回弹，
+     用在药丸、滑块上，让滑动有种液体感。 */
+  --t-fast:140ms;
+  --t-mid:200ms;
+  --t-slow:300ms;
+  --ease:cubic-bezier(.22,.72,.28,1);
+  --ease-soft:cubic-bezier(.34,.86,.32,1);
+  --ease-spring:cubic-bezier(.32,1.36,.44,1);
+}
+
+/* ---------- 深夜模式 ----------
+   data-mode 由 JS 写到 <html> 上（浅色 / 深色 / 跟随系统三个值）。
+   为什么不用 @media (prefers-color-scheme) 直接写：
+   「跟随系统」必须能跟「手动指定」共存，而手动指定的优先级更高。
+   用 JS 解出最终值再写死到 data-mode 上，CSS 就只管两套变量，不用写嵌套判断；
+   跟随系统那档的监听也就一行 matchMedia 的事。
+   这里只重写颜色相关的变量，动效/圆角/间距那套完全沿用。 */
+[data-mode="dark"]{
+  --paper:#0e0f12;
+  --paper-2:#15171b;
+  --glass:rgba(255,255,255,.045);
+  --glass-strong:rgba(255,255,255,.065);
+  --glass-edge:rgba(255,255,255,.085);
+
+  --ink:#f1f2f5;
+  --ink-2:#c2c6ce;
+  --muted:#8b919c;
+  --faint:#656b77;
+
+  --line:rgba(255,255,255,.085);
+  --line-2:rgba(255,255,255,.05);
+  --shadow:0 1px 2px rgba(0,0,0,.45), 0 10px 26px -18px rgba(0,0,0,.85);
+  --shadow-lift:0 2px 8px rgba(0,0,0,.55), 0 22px 44px -26px rgba(0,0,0,.9);
+  --shadow-inset:inset 0 1px 0 rgba(255,255,255,.05);
+
+  --sheen:rgba(255,255,255,.045);
+  --sheen-2:rgba(255,255,255,.13);
+  --drop:rgba(0,0,0,.65);
+}
+
+*{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
+html{-webkit-text-size-adjust:100%; text-size-adjust:100%}
+html,body{margin:0;padding:0;height:100%}
+[hidden]{display:none !important}
+body{
+  font-family:var(--font);
+  color:var(--ink);
+  font-size:16px; line-height:1.62;
+  -webkit-font-smoothing:antialiased;
+  overscroll-behavior-y:none;
+  background:var(--paper);
+  transition:background-color .6s var(--ease);
+}
+
+/* 氛围层：跟随主题色的极淡光晕，不抢内容。
+   2026-10-05 改版 —— 方案B：主题色从**屏幕最顶边**开始，一路往下淡出。
+   为什么这么改：以前是「状态栏纯白 → 顶栏自己再铺一层白 → 底下才透出颜色」，
+   中间那条「白变有色」的边界就是看着割裂的原因。现在颜色直接顶到状态栏那儿，
+   和状态栏用同一个顶层色（--top-color，由 JS 同时写进 meta theme-color），
+   它们之间**不存在一条可以看见的缝**。
+   · --aura-1 最浓，贴着最顶边（这一层要和 theme-color 严丝合缝）
+   · --aura-2 中段快速稀释
+   · --aura-3 屏幕底部一点点回光，让整块不是「上重下空」的死板分布 */
+#aura{
+  position:fixed; inset:0; z-index:0; pointer-events:none;
+  transition:opacity .8s var(--ease);
+  background:
+    linear-gradient(180deg,
+      var(--aura-1, rgba(110,107,254,.30)) 0%,
+      var(--aura-2, rgba(110,107,254,.12)) 34%,
+      rgba(0,0,0,0) 72%),
+    radial-gradient(140% 58% at 50% 112%,
+      var(--aura-3, rgba(110,107,254,.06)), rgba(0,0,0,0) 72%);
+}
+
+button{font-family:inherit; font-size:inherit; color:inherit; border:0; background:none; cursor:pointer}
+input,textarea,select{font-family:inherit; font-size:inherit; color:inherit}
+
+#app{
+  position:relative; z-index:1;
+  min-height:100vh; min-height:100dvh;   /* dvh：手机地址栏收起来时不会把底部导航顶出屏幕 */
+  display:flex; flex-direction:column;
+  max-width:620px; margin:0 auto;
+  overflow-x:hidden;
+}
+
+/* ---------- 顶栏（仅内页出现，首页没有） ----------
+   要和手机自带的状态栏连成一片，不留一条断口。
+
+   走过的弯路（三版）：
+   1. 悬浮的玻璃胶囊卡 —— 三层颜色叠一起，还多两道圆角边，一眼就知道是「贴上去的」；
+   2. 顶栏铺死纸白、下 42% 渐隐 —— 状态栏是白的、顶栏上半也是白的，
+      但底下透出的氛围色跟这层白之间有一条硬边界，还是割裂；
+   3. 现在（方案B）：顶栏**默认完全透明**，不让它在顶上再画一层颜色。
+      氛围色由 #aura 从最顶边往下铺（见上面那段），顶栏只是内容的锚点。
+
+   那内容滚上来、跑到标题底下怎么办？—— 给 .solid 类。
+   只有当页面真的往上滚了，顶栏才淡入一层纸色（200ms），
+   跟 iOS 大标题那种「滚上去才变成实心栏」一个意思。
+   静止在顶部时，它是透明的，跟状态栏是一整片。 */
+#topbar{
+  position:sticky; top:0; z-index:30;
+  padding:calc(var(--safe-t) + 12px) var(--gutter) 14px;
+  background:none;
+  display:none;
+  transition:background-color .2s var(--ease);
+}
+#topbar.solid{
+  background:linear-gradient(180deg,
+    var(--paper) 0%, var(--paper) 62%, transparent 100%);
+}
+#topbar.on{display:block}
+.tb-row{
+  height:52px; padding:0 6px 0 4px;
+  display:flex; align-items:center; gap:8px;
+  border-radius:0; border:none; background:transparent;
+  box-shadow:none; backdrop-filter:none; -webkit-backdrop-filter:none;
+}
+.tb-title{margin:0; font-size:16px; font-weight:600; letter-spacing:.01em}
+.tb-actions{display:flex; align-items:center; gap:2px; margin-left:auto}
+.tb-btn{
+  width:42px; height:42px; border-radius:13px; display:grid; place-items:center;
+  color:var(--ink-2); transition:background .2s var(--ease), color .2s var(--ease);
+}
+.tb-btn:active{background:var(--line)}
+.tb-btn svg{width:19px; height:19px; stroke:currentColor; fill:none; stroke-width:1.7;
+  stroke-linecap:round; stroke-linejoin:round}
+
+/* ---------- 舞台 ---------- */
+#stage{
+  flex:1 1 auto;
+  display:flex; flex-direction:column;   /* 让页面撑满这一屏（今日记录那页要用） */
+  padding:10px var(--gutter) calc(var(--tab-h) + var(--safe-b) + 42px);
+}
+.page{flex:1 1 auto}
+/* 只有「今日记录」这一页是真正的列布局：两个框平分剩下的高度 */
+.page.editor{display:flex; flex-direction:column}
+/* ---------- 页面切换 ----------
+   一个细节值得说明：render() 是整块重画 #stage 的，所以每点一下（点标签、
+   换一句、展开输入框）都会新建一个 .page —— 如果不管，整屏就会重新淡入一遍，
+   看着很毛躁。app.js 那边会把「原地刷新」的那次重画标上 .still，这里就不放动画。
+   只有真正「换了一屏」的时候才播。 */
+.page{animation:pageIn .3s var(--ease) both}
+@keyframes pageIn{from{opacity:0; transform:translateY(8px)} to{opacity:1; transform:none}}
+.page.out{animation:pageOut .18s var(--ease) both}
+@keyframes pageOut{to{opacity:0; transform:translateY(-6px)}}
+
+/* 整理的分步：往前走从右边进来，往回退从左边进来 —— 方向跟「前进/后退」对得上 */
+.page.from-r{animation:pageInR var(--t-slow) var(--ease) both}
+.page.from-l{animation:pageInL var(--t-slow) var(--ease) both}
+@keyframes pageInR{from{opacity:0; transform:translateX(24px)} to{opacity:1; transform:none}}
+@keyframes pageInL{from{opacity:0; transform:translateX(-24px)} to{opacity:1; transform:none}}
+
+/* 原地刷新：已经在看的东西不要再淡进来一遍。
+   注意这里**没有**把 .entry-form / .tag-input / .confirm-bar 列进来 ——
+   那几个是「刚刚才冒出来的东西」，它们该有动画，正好用来提示「这里多了点东西」。 */
+.page.still,
+.page.still .entry,
+.page.still .card,
+.page.still .card-quiet,
+.page.still .block,
+.page.still .reveal,
+.page.still .poem-card,
+.page.still .trace-hero,
+.page.still .quiz,
+.page.still .reveal-card{animation:none}
+
+/* 列表一条条浮上来。只错开前几条：一路错下去，最后一条要等很久才出现。 */
+.page .entry:nth-child(2){animation-delay:32ms}
+.page .entry:nth-child(3){animation-delay:64ms}
+.page .entry:nth-child(4){animation-delay:96ms}
+.page .entry:nth-child(5){animation-delay:128ms}
+.page .entry:nth-child(6){animation-delay:160ms}
+
+/* ---------- 底部导航 ---------- */
+#tabbar{
+  position:fixed; left:0; right:0; bottom:0; z-index:40;
+  max-width:560px; margin:0 auto;
+  padding:8px var(--gutter) calc(var(--safe-b) + 8px);
+  display:grid; grid-template-columns:1fr 1fr 1fr; align-items:center;
+  background:none;
+  border:0; box-shadow:none;
+}
+/* 悬浮的圆角玻璃药丸。左右留边、四角全圆 —— 不要贴边的方条 */
+#tabbar::before{
+  content:''; position:absolute; z-index:0; pointer-events:none;
+  left:var(--gutter); right:var(--gutter); top:0; bottom:var(--safe-b);
+  border-radius:var(--r-nav);
+  background:var(--glass-strong);
+  border:1px solid var(--glass-edge);
+  backdrop-filter:saturate(180%) blur(22px);
+  -webkit-backdrop-filter:saturate(180%) blur(22px);
+  box-shadow:var(--shadow-lift), var(--shadow-inset);
+}
+/* 导航上的滑动指示块。
+   带一点点回弹（--ease-spring）：滑到位时轻轻越过再收回来，
+   看着像有重量的液体，而不是一块被硬拽过去的色片。
+   will-change 让它提前上合成层 —— 这是全站唯一一直在动的东西，值这个开销。 */
+#tabbar{transition:transform .32s var(--ease-soft), opacity .32s var(--ease-soft)}
+/* 键盘开着（body.kb 由 app.js 的可视视口监听挂上）：
+   导航栏和编辑页的保存 / 取消 / 草稿箱那排整体沉到键盘下面，
+   两个框占满整屏；键盘收起后它们滑回来。 */
+body.kb #tabbar{transform:translateY(130%); opacity:0; pointer-events:none}
+body.kb .page.editor .simple-foot{display:none}
+body.kb #stage{padding-bottom:calc(var(--safe-b) + 12px)}
+.nav-pill{
+  position:absolute; left:0; top:17px; height:40px; border-radius:14px;
+  background:var(--accent-soft); border:1px solid var(--accent-line);
+  transition:transform .42s var(--ease-spring), width .42s var(--ease-spring),
+             opacity var(--t-slow) var(--ease);
+  pointer-events:none; z-index:0;
+  will-change:transform, width;
+}
+.tab{
+  position:relative; z-index:1;
+  height:var(--tab-h); display:flex; flex-direction:column;
+  align-items:center; justify-content:center; gap:2px;
+  color:var(--faint);
+  transition:color .28s var(--ease), transform .28s var(--ease);
+}
+.tab-txt{font-size:12.5px; letter-spacing:.04em}
+.tab.on{color:var(--accent-deep)}
+.tab:active{transform:scale(.95)}
+
+/* ---------- 首页 ---------- */
+/* 首页：只有一个按钮，落在拇指够得着的中下部，上面全部留白 */
+.home{
+  min-height:calc(100dvh - var(--tab-h) - var(--safe-b) - 56px);
+  display:flex; flex-direction:column;
+  align-items:center; justify-content:flex-end;
+  padding-bottom:2vh;     /* 用户反馈：按钮再往下一点点，整体比例更顺 */
+}
+@keyframes fadeUp{from{opacity:0; transform:translateY(8px)} to{opacity:1; transform:none}}
+
+.record-btn{
+  width:100%; max-width:286px; height:68px;
+  border:1px solid var(--glass-edge);
+  border-radius:var(--r-record);
+  background:var(--glass-strong);
+  backdrop-filter:blur(18px) saturate(170%);
+  -webkit-backdrop-filter:blur(18px) saturate(170%);
+  color:var(--accent-deep);
+  box-shadow:var(--shadow-lift), var(--shadow-inset);
+  display:flex; align-items:center; justify-content:center; gap:10px;
+  font-size:16.5px; font-weight:600; letter-spacing:.1em;
+  transition:transform .22s var(--ease), box-shadow .3s var(--ease), border-color .3s var(--ease);
+  position:relative; overflow:hidden;
+  opacity:0; animation:fadeUp .8s var(--ease) .16s both;
+}
+.record-btn::after{
+  content:''; position:absolute; inset:0;
+  background:linear-gradient(120deg, transparent 30%, rgba(255,255,255,.62) 50%, transparent 70%);
+  transform:translateX(-120%); transition:transform .7s var(--ease);
+}
+.record-btn:active{transform:scale(.975); box-shadow:var(--shadow),
+  0 0 0 4px var(--accent-soft)}
+.record-btn:active::after{transform:translateX(120%)}
+.record-btn .pen{width:20px; height:20px; stroke:currentColor; fill:none;
+  stroke-width:1.7; stroke-linecap:round; stroke-linejoin:round}
+
+
+/* ---------- 卡片 ---------- */
+.card{
+  background:var(--glass-strong);
+  border:1px solid var(--glass-edge);
+  border-radius:var(--r-card);
+  padding:18px;
+  box-shadow:var(--shadow), var(--shadow-inset);
+  backdrop-filter:blur(16px) saturate(160%);
+  -webkit-backdrop-filter:blur(16px) saturate(160%);
+}
+.card.plain{background:var(--paper-2); border-color:var(--line); box-shadow:var(--shadow)}
+.card-quiet{
+  background:var(--glass);
+  border:1px solid var(--line-2);
+  border-radius:var(--r-card);
+  padding:15px 17px;
+}
+
+/* ---------- 段落标题 ---------- */
+.sec{
+  display:flex; align-items:center; justify-content:space-between;
+  margin:26px 2px 12px;
+}
+.sec h2{margin:0; font-size:12.5px; color:var(--muted); font-weight:500; letter-spacing:.14em}
+.link-btn{font-size:13px; color:var(--accent-deep); opacity:.85}
+
+/* ---------- 列表条目 ---------- */
+.entry{
+  display:block; width:100%; text-align:left;
+  border:1px solid var(--line-2); border-radius:var(--r-block);
+  background:var(--glass);
+  backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
+  padding:14px 16px; margin-bottom:9px;
+  transition:transform .2s var(--ease), box-shadow .3s var(--ease), background .25s var(--ease);
+  opacity:0; animation:fadeUp .5s var(--ease) both;
+}
+.entry:active{transform:scale(.988); background:var(--glass-strong)}
+/* 新建入口跟其它条目一个样式，不跳出来抢眼 */
+.entry-new{border-style:dashed; border-color:var(--accent-line); background:transparent}
+.entry-new:active{background:var(--accent-soft)}
+.entry-new .entry-line{color:var(--accent-deep)}
+.entry-form{
+  border:1px dashed var(--accent-line); border-radius:var(--r-block);
+  padding:14px 16px; margin-bottom:9px;
+  background:var(--glass);
+  backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
+  animation:fadeUp .28s var(--ease) both;
+}
+.entry-day{font-size:11px; color:var(--faint); letter-spacing:.08em}
+.entry-line{
+  margin-top:4px; font-size:14.5px; color:var(--ink); line-height:1.6;
+  overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;
+}
+.entry-flags{margin-top:7px; display:flex; gap:5px; flex-wrap:wrap}
+.flag{font-size:11px; padding:2px 8px; border-radius:999px;
+  background:var(--accent-soft); color:var(--accent-deep)}
+.flag.grey{background:rgba(25,27,31,.045); color:var(--muted)}
+.flag.warn{background:rgba(198,140,86,.12); color:#8a6027}
+
+.empty{padding:44px 10px; text-align:center; color:var(--faint); font-size:13.5px; line-height:1.9}
+
+/* ---------- 编辑器 ---------- */
+.editor-area{
+  width:100%; min-height:52vh; border:0; outline:0; resize:none;
+  background:transparent; font-size:16.5px; line-height:1.9; color:var(--ink);
+  padding:6px 0 0;
+}
+.editor-area::placeholder{color:var(--faint); line-height:1.9}
+.editor-foot{
+  position:sticky; bottom:calc(var(--tab-h) + var(--safe-b) + 8px);
+  display:flex; gap:10px; padding:14px 0 4px; align-items:center;
+  background:linear-gradient(180deg, transparent 0%, var(--paper) 40%);
+}
+
+/* ---------- 按钮 ---------- */
+.btn{
+  flex:1; height:47px; border-radius:var(--r-btn); font-size:15px;
+  /* 显式写 center：靠右布局是靠父级 text-align:right 把按钮本身推过去的，
+     按钮里的文字不能被一起带偏（不同浏览器给 button 的默认值不完全一致） */
+  text-align:center;
+  border:1px solid var(--line); background:var(--glass-strong); color:var(--ink-2);
+  backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
+  box-shadow:var(--shadow), var(--shadow-inset);
+  transition:transform .18s var(--ease), box-shadow .3s var(--ease), background .25s var(--ease);
+}
+.btn:active{transform:scale(.978)}
+.btn.primary{
+  background:var(--accent); border-color:transparent; color:#fff; font-weight:600;
+  box-shadow:0 8px 22px -10px var(--accent);
+}
+.btn.primary:active{box-shadow:0 4px 12px -6px var(--accent)}
+.btn.ghost{background:transparent; box-shadow:none; border-color:transparent; color:var(--muted)}
+.btn[disabled]{opacity:.4; box-shadow:none}
+.btn-sm{flex:0 0 auto; height:36px; padding:0 13px; font-size:13.5px; border-radius:12px
+  ;border:1px solid var(--line);background:var(--glass);box-shadow:none}
+.btn-sm.primary{background:var(--accent);border-color:transparent;color:#fff;box-shadow:none}
+.btn-sm.ghost{background:transparent;border-color:transparent}
+
+/* 整理每一步底部的操作区（导航栏正上方那一块）。
+   排布规则：
+     · 次要操作在上面一行、靠右（单手拿手机时拇指落在右下角，摆左边要横跨屏幕才够得到）；
+       一行里有两个就平均分，只有一个就用内容宽、贴右。
+     ·    主要操作写在 HTML 的最后（.tidy-foot 直接子级的 .btn），占满整宽。
+   这么排的起因：原先主按钮和次要按钮混在一行，主按钮反而比次要按钮还窄，
+   看着不知道哪个是主操作。（用户 2026-10-04 让重排这一块。） */
+.tidy-foot{margin-top:18px; display:flex; flex-direction:column; gap:10px}
+.tidy-foot > .btn{width:100%}
+.btn-row{display:flex; gap:10px; justify-content:flex-end}
+.btn-row > .btn{flex:1 1 0; min-width:0}
+.btn-row > .btn:only-child{flex:0 1 auto; padding:0 22px}
+
+/* 单独一个按钮、靠右、按内容宽度（不拉满）。
+   用在「这条记录」页的「整理这条」上：单手拇指在右下角，摆左边够不到。 */
+.btn-right{display:flex; justify-content:flex-end; margin-top:18px}
+.btn-right > .btn{flex:0 0 auto; padding:0 22px}
+
+/* 回收站列表（设置页） */
+.trash-list{margin-top:12px}
+.trash-row{
+  display:flex; align-items:center; gap:12px;
+  padding:11px 0; border-bottom:1px solid var(--line-2);
+}
+.trash-row:last-child{border-bottom:0}
+.trash-info{flex:1; min-width:0}
+.trash-line{
+  font-size:14.5px; line-height:1.6; color:var(--ink-2);
+  overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;
+  overflow-wrap:anywhere;
+}
+
+/* ---------- 设置项 ---------- */
+.cell{
+  display:flex; align-items:center; gap:12px;
+  padding:14px 2px; border-bottom:1px solid var(--line-2);
+}
+.cell:last-child{border-bottom:0}
+.cell-ico{width:30px; height:30px; border-radius:10px; display:grid; place-items:center;
+  background:var(--accent-soft); color:var(--accent-deep); flex:0 0 auto}
+.cell-ico svg{width:16px; height:16px; stroke:currentColor; fill:none; stroke-width:1.8;
+  stroke-linecap:round; stroke-linejoin:round}
+.cell-main{flex:1; min-width:0}
+.cell-t{font-size:14.5px}
+.cell-s{font-size:12px; color:var(--muted); margin-top:1px}
+.cell-v{font-size:13px; color:var(--muted); flex:0 0 auto}
+
+/* ---------- 输入 ---------- */
+.field{margin-bottom:15px}
+.field > label{display:block; font-size:12px; color:var(--muted); letter-spacing:.08em; margin-bottom:6px}
+.inp{
+  width:100%; border:1px solid var(--line); border-radius:13px;
+  padding:11px 13px; background:var(--glass-strong); outline:0;
+  transition:border-color .25s var(--ease), box-shadow .25s var(--ease);
+  -webkit-appearance:none; appearance:none;
+}
+select.inp{
+  background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),
+                   linear-gradient(135deg,var(--muted) 50%,transparent 50%);
+  background-position:calc(100% - 18px) 50%, calc(100% - 13px) 50%;
+  background-size:5px 5px, 5px 5px; background-repeat:no-repeat;
+  padding-right:36px;
+}
+.inp:focus{border-color:var(--accent-line); box-shadow:0 0 0 3px var(--accent-soft)}
+.hint{font-size:12px; color:var(--faint); margin-top:6px; line-height:1.7}
+
+/* ---------- 色板 ----------
+   六列 × 两行 = 十二格：十一颗颜色 + 最后一颗自定义轮盘，正好铺满一整块。
+   不设 max-width —— 色板和卡片左右两条边齐平，跟「当前主题」「模式」那两排
+   是同一个宽度，看着才对称。
+   浅色 / 深色不在这排里切换，走下面「模式」那一排。 */
+.swatches{
+  display:grid; grid-template-columns:repeat(6,1fr);
+  gap:16px 8px;
+  padding:18px 2px 8px;
+}
+.swatch{
+  aspect-ratio:1; border-radius:50%; position:relative;
+  box-shadow:0 2px 8px -3px var(--drop);
+  transition:transform .24s var(--ease-soft);
+}
+.swatch:active{transform:scale(.86)}
+.swatch.on::after{
+  content:''; position:absolute; inset:-4px;
+  border:2px solid var(--accent); border-radius:50%;
+  animation:pop .34s var(--ease-soft) both;
+}
+/* 选中的那颗：只在周围亮一圈主题色描边。圈里不放任何图形 ——
+   以前在里面画过一个对勾，浅底上看得见、深底上糊成一团，用户说去掉。 */
+@keyframes pop{from{transform:scale(.6); opacity:0} to{transform:none; opacity:1}}
+
+/* 最后一格：自定义。一个彩色轮盘，点开/收起下面的自绘取色面板。
+   内圈留白 + 细边，看上去是个「往里钻」的洞，跟实心色块区分开。 */
+.swatch.custom{
+  background:conic-gradient(from 205deg,
+    #E46A6A, #E0A93B, #5AA06A, #3FA9A0, #4F7FD6, #8A6BD1, #C2568C, #E46A6A);
+  box-shadow:0 2px 10px -3px var(--drop);
+}
+.swatch.custom::before{
+  content:''; position:absolute; inset:26%;
+  border-radius:50%;
+  background:var(--paper);
+  border:1.5px solid var(--glass-edge);
+}
+.swatch.custom.on::after{
+  inset:-4px;
+  border-color:var(--ink-2);
+}
+
+/* ---------- 自绘取色面板 ----------
+   手机上系统取色器没法精确输入 RGB / 色号，所以面板自己画：
+   三个滑杆（R/G/B 各带通道渐变轨）+ 一个 HEX 输入框，改了实时生效。 */
+.picker{
+  margin:14px 2px 4px; padding:14px;
+  border-radius:18px;
+  background:var(--sheen); border:1px solid var(--glass-edge);
+  display:flex; flex-direction:column; gap:10px;
+}
+.picker-top{display:flex; align-items:center; gap:10px}
+.picker-eye{
+  width:40px; height:40px; border-radius:14px; flex:0 0 auto;
+  box-shadow:inset 0 0 0 1px var(--glass-edge), 0 6px 14px -8px var(--drop);
+}
+.picker-hex{
+  flex:1 1 auto; min-width:0; height:40px; border-radius:12px;
+  border:1px solid var(--glass-edge); background:var(--paper); color:var(--ink);
+  font-size:15px; letter-spacing:.08em; text-align:center;
+  font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  padding:0 8px;
+}
+.picker-hex:focus{outline:0; border-color:var(--accent-line)}
+.picker-done{
+  flex:0 0 auto; height:40px; padding:0 18px; border-radius:12px;
+  background:var(--accent); color:#fff; font-size:14px;
+}
+.picker-done:active{transform:scale(.95)}
+.picker-sl{display:flex; align-items:center; gap:10px; font-size:12.5px; color:var(--faint)}
+.picker-k{width:14px; flex:0 0 auto}
+.picker-v{width:30px; flex:0 0 auto; text-align:right; color:var(--ink-2); font-variant-numeric:tabular-nums}
+.picker-sl input[type="range"]{
+  flex:1 1 auto; min-width:0; height:26px;
+  -webkit-appearance:none; appearance:none;
+  background:none; padding:0; margin:0;
+}
+.picker-sl input[type="range"]::-webkit-slider-runnable-track{
+  height:6px; border-radius:3px; background:var(--trk, linear-gradient(90deg,#000,#fff));
+}
+.picker-sl input[type="range"]::-webkit-slider-thumb{
+  -webkit-appearance:none; width:20px; height:20px; margin-top:-7px;
+  border-radius:50%; background:#fff; border:1px solid var(--glass-edge);
+  box-shadow:0 2px 6px -2px var(--drop);
+}
+.picker-sl input[type="range"]::-moz-range-track{
+  height:6px; border-radius:3px; background:var(--trk, linear-gradient(90deg,#000,#fff));
+}
+.picker-sl input[type="range"]::-moz-range-thumb{
+  width:20px; height:20px; border-radius:50%; background:#fff;
+  border:1px solid var(--glass-edge); box-shadow:0 2px 6px -2px var(--drop);
+}
+
+/* ---------- 模式：浅色 / 深色 / 跟随系统 ----------
+   三颗挨着排，中间不留缝，像一段分段开关；
+   选中那颗是主题色的淡底 + 主题色描边，和上面色板的选择圈是同一套语言。 */
+.modes{
+  display:grid; grid-template-columns:repeat(3,1fr);
+  gap:8px; flex:1 1 auto; margin-top:0;
+}
+.mode-btn{
+  padding:9px 0; border-radius:var(--r-btn);
+  background:var(--glass-strong);
+  border:1px solid var(--line);
+  color:var(--ink-2);
+  font-size:13.5px;
+  box-shadow:var(--shadow-inset);
+  transition:background .2s var(--ease), color .2s var(--ease),
+             border-color .2s var(--ease);
+}
+.mode-btn.on{
+  background:var(--accent-soft);
+  border-color:var(--accent-line);
+  color:var(--ink);
+}
+
+/* ---------- 整理：块 ---------- */
+.block{
+  border:1px solid var(--line-2); border-radius:var(--r-block);
+  padding:14px 16px; margin-bottom:11px;
+  background:var(--glass);
+  backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
+  transition:transform .2s var(--ease);
+}
+.block-head{display:flex; align-items:center; justify-content:space-between; gap:10px}
+.block-label{font-size:11.5px; letter-spacing:.12em; color:var(--muted)}
+.block-body{margin-top:8px; font-size:15.5px; line-height:1.8; white-space:pre-wrap; overflow-wrap:anywhere}
+.block-body.nil{color:var(--faint)}
+.block-body textarea{
+  width:100%; border:0; outline:0; resize:vertical; background:transparent; padding:0;
+  font-size:16px; line-height:1.8;   /* ≥16px：手机上聚焦时不会把页面放大 */
+}
+/* 还没记录：整块都可以点，灰字就是提示本身。
+   以前这里写的是「未记录」三个字 + 一个「自己写这一项」按钮 ——
+   按钮是接入 AI 那会儿留的（那时这一步由 AI 拆，用户只能点按钮补一格）。
+   AI 砍掉之后用户说直接删按钮、点这块自己写，于是这里换成一个虚线空框。 */
+.block-blank{
+  display:block; width:100%; text-align:left; margin:0;
+  font:inherit; font-size:15.5px; line-height:1.7; color:var(--faint);
+  border:1px dashed var(--line); border-radius:11px;
+  background:transparent; padding:9px 12px;
+  cursor:pointer; -webkit-appearance:none; appearance:none;
+  transition:border-color .18s var(--ease), background .18s var(--ease);
+}
+.block-blank:active{border-color:var(--accent-line); background:var(--accent-soft)}
+.src-mark{font-size:10.5px; color:var(--accent-deep); background:var(--accent-soft);
+  padding:1px 7px; border-radius:7px}
+.src-mark.pick{color:#8a6027; background:rgba(198,140,86,.13)}
+.src-mark.local{color:var(--muted); background:rgba(25,27,31,.05)}
+
+/* 清理差异 */
+.diff ins{text-decoration:none; color:inherit}
+.diff del{
+  color:var(--faint); text-decoration:line-through;
+  text-decoration-thickness:1px;
+  background:rgba(25,27,31,.04);
+  border-radius:5px; padding:0 3px; margin:0 1px;
+  transition:background .2s var(--ease);
+}
+/* 两个都能点：灰色的点一下留下，留下的（虚线下划）再点一下又划掉。
+   指针改成手，不然看不出「这个还能再点」。 */
+.diff del,
+.diff ins[data-act]{cursor:pointer}
+.diff del:active,
+.diff ins[data-act]:active{background:var(--accent-soft)}
+.diff ins[data-act]{
+  text-decoration:underline dotted var(--accent-line);
+  text-underline-offset:3px;
+  background:var(--accent-soft);
+  border-radius:5px; padding:0 3px; margin:0 1px;
+  color:var(--ink-2);
+  transition:background .2s var(--ease);
+}
+
+/* 留意提示：只提出来给你看，永远不自动改 */
+.tip{
+  border-left:2px solid var(--accent-line);
+  padding:7px 0 7px 12px; margin-top:9px;
+  font-size:14px; line-height:1.75; color:var(--ink-2);
+}
+.tip:first-of-type{margin-top:12px}
+
+/* 回溯里被强调的块（当时给自己定的做法） */
+.block.focus{
+  border-color:var(--accent-line);
+  background:var(--accent-soft);
+}
+.block.focus .block-label{color:var(--accent-deep)}
+
+/* 删除的就地确认条 */
+.confirm-bar{
+  margin-top:20px; padding:15px 17px;
+  border:1px solid var(--accent-line); border-radius:var(--r-block);
+  background:var(--glass);
+  backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px);
+  font-size:13.5px; color:var(--ink-2); text-align:center;
+  animation:fadeUp .3s var(--ease) both;
+}
+
+/* 标签 */
+.chips{display:flex; flex-wrap:wrap; gap:7px; margin-top:9px}
+.chip{
+  font-size:12.5px; padding:7px 13px; border-radius:999px;
+  border:1px solid var(--accent-line);
+  background:var(--accent-soft);
+  backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
+  color:var(--accent-deep);
+  display:inline-flex; align-items:center; gap:6px;
+  transition:transform .2s var(--ease), background .25s var(--ease);
+}
+.chip:active{transform:scale(.94)}
+.chip .x{font-size:13px; opacity:.5; line-height:1}
+.chip.add{
+  border-style:dashed; border-color:var(--line);
+  background:var(--glass);
+  backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
+  color:var(--muted);
+}
+.chip.suggest{border-style:dashed; border-color:var(--accent-line); background:var(--glass)}
+/* 选中的那个：实线 + 一点光晕。候选和已选现在同在一行，
+   靠这个把「点没点上」说清楚 —— 点一下是选上，再点一下是取消，位置不动。 */
+.chip.on{border-style:solid; border-color:var(--accent); box-shadow:0 2px 10px var(--accent-soft)}
+
+/* 「＋ 其他」点开之后的输入行 */
+.tag-input{
+  display:flex; gap:8px; align-items:center; margin-top:10px;
+  animation:fadeUp .28s var(--ease) both;
+}
+.tag-input .inp{flex:1; height:40px; padding:0 12px}
+
+/* ---------- 分段控件 ---------- */
+.seg{
+  display:flex; gap:4px; padding:4px; border-radius:16px;
+  background:var(--glass);
+  border:1px solid var(--glass-edge);
+  backdrop-filter:blur(16px) saturate(170%);
+  -webkit-backdrop-filter:blur(16px) saturate(170%);
+  box-shadow:var(--shadow-inset);
+  margin-bottom:16px; position:relative;
+}
+.seg button{
+  flex:1; height:34px; border-radius:12px; font-size:13.5px; color:var(--muted);
+  position:relative; z-index:1;
+  transition:color .25s var(--ease);
+}
+.seg button.on{color:var(--ink); font-weight:600}
+.seg-thumb{
+  position:absolute; top:4px; height:34px; border-radius:12px; z-index:0;
+  background:var(--sheen-2);
+  box-shadow:0 1px 3px rgba(25,27,31,.07), var(--shadow-inset);
+  transition:transform .38s var(--ease-spring), width .38s var(--ease-spring);
+  will-change:transform, width;
+}
+
+/* 自己改一遍那段文字 */
+.edit-area{
+  margin-top:11px; resize:vertical; line-height:1.85;
+  font-size:16px; background:var(--paper-2);
+}
+
+/* ---------- 轨迹 ---------- */
+.trace-hero{
+  display:block; width:100%; text-align:left;
+  border-radius:var(--r-card); padding:24px 20px; margin:8px 0 20px;
+  background:linear-gradient(150deg, var(--accent-soft), var(--sheen) 58%);
+  border:1px solid var(--accent-line);
+  box-shadow:var(--shadow), var(--shadow-inset);
+  backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);
+  transition:transform .25s var(--ease);
+}
+.trace-hero:active{transform:scale(.99)}
+.trace-hero .th-when{font-size:11.5px; letter-spacing:.16em; color:var(--accent-deep); opacity:.85}
+.trace-hero .th-text{margin-top:10px; font-size:16.5px; line-height:1.85}
+
+.tl-item{position:relative; padding:0 0 16px 20px; border-left:1px solid var(--line)}
+.tl-item:last-child{border-left-color:transparent}
+.tl-item::before{
+  content:''; position:absolute; left:-4px; top:8px;
+  width:8px; height:8px; border-radius:50%;
+  background:var(--paper); border:2px solid var(--accent-line);
+}
+
+/* ---------- 回溯 ---------- */
+.quiz{
+  border:1px dashed var(--accent-line); border-radius:var(--r-card);
+  padding:20px; background:var(--glass);
+  backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
+}
+.quiz h3{margin:0 0 14px; font-size:16px; font-weight:600; line-height:1.55; letter-spacing:.01em}
+.quiz p{margin:0 0 13px; font-size:13px; color:var(--muted)}
+
+/* 没写自己的想法之前，当时的一切都锁着 */
+.lock-card{
+  display:flex; gap:11px; align-items:flex-start;
+  padding:14px 15px; border-radius:var(--r-block);
+  background:var(--glass); border:1px solid var(--line-2);
+  font-size:13.5px; line-height:1.75; color:var(--muted);
+}
+.lock-card .lock{
+  width:19px; height:19px; flex:0 0 auto; margin-top:2px;
+  stroke:var(--muted); fill:none; stroke-width:1.6; stroke-linecap:round; stroke-linejoin:round;
+}
+
+.reveal{animation:fadeUp .5s var(--ease) both}
+.reveal-card{padding:6px 18px 4px}
+.reveal-head{
+  display:flex; align-items:center; justify-content:space-between; gap:10px;
+  padding:14px 0 11px; border-bottom:1px solid var(--line-2);
+}
+.reveal-card .block{
+  border:0; border-bottom:1px solid var(--line-2); border-radius:0;
+  background:transparent; backdrop-filter:none; -webkit-backdrop-filter:none;
+  padding:12px 0; margin-bottom:0;
+}
+.reveal-card .block:last-child{border-bottom:0; padding-bottom:4px}
+.reveal-card .block-body{margin-top:6px; font-size:15px; line-height:1.75; color:var(--ink-2)}
+.reveal-card .block.focus{
+  border-bottom-color:var(--accent-line);
+  background:var(--accent-soft); border-radius:12px;
+  padding-left:12px; padding-right:12px; margin-top:6px;
+}
+
+/* 后来怎么样了 */
+.outcome-row{display:flex; gap:9px; margin-top:13px}
+.outcome-btn{
+  flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px;
+  padding:15px 6px; border-radius:var(--r-block);
+  border:1px solid var(--line); background:var(--glass);
+  font-size:12.5px; color:var(--ink-2);
+  transition:transform .18s var(--ease), border-color .25s var(--ease), background .25s var(--ease);
+}
+.outcome-btn svg{width:19px; height:19px; stroke:var(--muted); fill:none;
+  stroke-width:1.9; stroke-linecap:round; stroke-linejoin:round}
+.outcome-btn.on{border-color:var(--accent-line); background:var(--accent-soft);
+  color:var(--accent-deep); font-weight:600}
+.outcome-btn.on svg{stroke:var(--accent-deep)}
+.outcome-btn:active{transform:scale(.97)}
+
+/* ---------- 结尾那首诗词 ----------
+   最后落在这一张卡上：竖排感的居中正文 + 静静的一行出处。
+   不吆喝、不说教，就是放在那儿。 */
+.poem-card{
+  text-align:center; padding:26px 22px 16px;
+  animation:fadeUp .6s var(--ease) both;
+}
+.poem-line{
+  font-size:17px; line-height:1.95; color:var(--ink);
+  letter-spacing:.08em;
+}
+.poem-meta{
+  margin-top:14px; font-size:12.5px; color:var(--muted); letter-spacing:.02em;
+}
+.poem-foot{
+  display:flex; align-items:center; justify-content:space-between; gap:10px;
+  margin-top:12px; padding-top:11px; border-top:1px solid var(--line-2);
+  min-height:20px;
+}
+.poem-tag{
+  font-size:11px; color:var(--faint); border:1px solid var(--line);
+  border-radius:999px; padding:1px 8px;
+}
+
+/* ---------- 关于 ---------- */
+.about-row{
+  display:flex; align-items:center; justify-content:space-between; gap:12px;
+  padding:11px 0; border-bottom:1px solid var(--line-2);
+  font-size:14.5px; color:var(--muted);
+}
+.about-row:last-of-type{border-bottom:0}
+.about-row b{color:var(--ink); font-weight:600}
+
+/* ---------- Toast ---------- */
+#toast{
+  position:fixed; left:50%; bottom:calc(var(--tab-h) + var(--safe-b) + 40px);
+  transform:translate(-50%, 14px); z-index:80;
+  background:rgba(25,27,31,.9); color:#fff; font-size:13px;
+  padding:9px 16px; border-radius:13px; opacity:0; pointer-events:none;
+  transition:opacity .26s var(--ease), transform .26s var(--ease);
+  max-width:80vw; text-align:center;
+  backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
+}
+#toast.on{opacity:1; transform:translate(-50%,0)}
+
+/* ---------- 提示条 ---------- */
+.notice{
+  border:1px solid var(--accent-line); background:var(--accent-soft);
+  border-radius:var(--r-block); padding:12px 14px; font-size:13px;
+  color:var(--ink-2); line-height:1.75;
+}
+.notice.warn{border-color:rgba(198,140,86,.28); background:rgba(198,140,86,.08)}
+
+/* ---------- 工具类 ---------- */
+.row-between{display:flex; align-items:center; justify-content:space-between; gap:12px}
+.stack > * + *{margin-top:11px}
+.mt{margin-top:16px} .mt-s{margin-top:8px}
+.center{text-align:center}
+.dim{color:var(--muted)}
+.tiny{font-size:12px}
+.mono-date{font-size:11.5px; color:var(--faint); letter-spacing:.12em}
+
+/* ---------- 手机适配 ---------- */
+/* 小屏（320~360px）少留点边，别让字挤成两行 */
+@media (max-width:360px){
+  .record-btn{height:62px; font-size:15.5px}
+  .card{padding:16px}
+  .quiz{padding:16px 14px}
+  .outcome-btn{padding:13px 4px; gap:6px; font-size:12px}
+  .block-body,.reveal-card .block-body{font-size:15.5px}
+}
+/* 矮屏（横屏 / 键盘弹出）：首页按钮别被顶走 */
+@media (max-height:560px){
+  .home{padding-bottom:1vh}
+}
+@media (pointer:coarse){
+  .btn{height:50px}                    /* 手指点击区域大一点 */
+  .btn-sm{height:38px}
+  .tab{min-height:44px}
+}
+
+@media (prefers-reduced-motion: reduce){
+  /* 除了把时长压没，还要把延迟也清掉 ——
+     不然错开的那几条会先「隐身」一百多毫秒才出现。 */
+  *{animation-duration:.01ms !important; animation-delay:0ms !important;
+    transition-duration:.01ms !important; transition-delay:0ms !important}
+}
+
+/* ---------- 键盘可达性 ----------
+   :focus-visible 只在「用键盘/遥控器操作」时出现，手指点不会亮，
+   所以加上它不会影响手机上的观感，但电脑上 Tab 走一遍能看清停在哪儿。 */
+:focus-visible{outline:2px solid var(--accent-line); outline-offset:2px}
+.inp:focus-visible{outline:0}
+.tab:focus-visible,
+.entry:focus-visible,
+.chip:focus-visible,
+.btn:focus-visible,
+.btn-sm:focus-visible,
+.outcome-btn:focus-visible,
+.tb-btn:focus-visible,
+.link-btn:focus-visible{border-radius:12px}
+
+/* 这类小文字按钮以前点下去没任何反馈，会让人怀疑点没点上 */
+.link-btn{transition:opacity var(--t-fast) var(--ease)}
+.link-btn:active{opacity:.55}
+
+/* ══════════════════════════════════════════════════════════════
+   简洁版专用微调 —— 底下这几条只在 web-simple 里，主版一行都不受影响。
+   ══════════════════════════════════════════════════════════════ */
+
+/* 首页只有一个「今日记录」大按钮 —— 靠底排，跟主版一模一样，这里不去改它。 */
+
+/* 今日记录：两个框，上下等大、对称，框里的字居中。
+   「事件」「收获」就是框正中间那行灰字，点进去才开始写。 */
+/* ---------- 今日记录的两个框 ----------
+   外层 .simple-box 只负责「框」这张皮（边框、玻璃底、阴影、高度），
+   里面装两样东西：
+     · .simple-ph  —— 「事件」「收获」那两个字，绝对定位铺满整框，
+       flex 一横一竖都居中。**必须是真元素**：textarea 是替换元素，
+       它身上的 ::before / ::after 各家浏览器都不渲染，上一版就栽在这，
+       字直接消失了。
+     · textarea    —— 真正打字的地方，透明底盖在提示字上面，
+       提示字 pointer-events:none，点哪儿都点到输入框。
+   框一有字（.has）提示字就淡出，不会叠成两个；颜色全走变量，
+   深色模式下两个字照常看得见。 */
+/* 两个框上下平分这一屏剩下的高度 —— 不再是写两行就满的固定小框。
+   框里就是普通输入：光标在左上角闪，字从左上往右排、写满换行往下走，
+   跟手机自带笔记一个手感。居中的只有那颗灰色提示字。 */
+.simple-editor{flex:1 1 auto; display:flex; flex-direction:column; gap:14px; padding-top:6px}
+.simple-box{
+  position:relative; flex:1 1 0; min-height:0;
+  display:flex; flex-direction:column;
+  width:100%;
+  border:1px solid var(--glass-edge); border-radius:var(--r-card);
+  background:var(--glass-strong);
+  box-shadow:var(--shadow), var(--shadow-inset);
+}
+.simple-ph{
+  position:absolute; inset:0;
+  display:flex; align-items:center; justify-content:center;
+  font-size:15.5px; letter-spacing:.05em; color:var(--faint);
+  pointer-events:none; -webkit-user-select:none; user-select:none;
+  transition:opacity .22s var(--ease);
+}
+/* 点进框（focus-within）或已经写了字：提示字淡出，把位置让给正文 */
+.simple-box.has .simple-ph,
+.simple-box:focus-within .simple-ph{opacity:0}
+.simple-box textarea{
+  position:relative; flex:1 1 auto; min-height:0;
+  width:100%;
+  border:0; outline:0; background:transparent; resize:none;
+  padding:18px;
+  font-family:inherit; font-size:15.5px; line-height:1.7;
+  text-align:left; color:var(--ink);
+  -webkit-appearance:none; appearance:none;
+}
+.simple-box textarea:focus{outline:0}
+
+/* 底部：上一行「保存 / 取消」，下一行灰色小字「保存到草稿箱」 */
+.simple-foot{flex-direction:column; align-items:stretch; gap:12px;
+  position:static; margin-top:auto; padding:14px 0 6px}
+.simple-foot .btn-row{width:100%}
+.simple-foot .btn-row > .btn{white-space:nowrap}
+/* 取消要比保存更淡 —— 它是「算了」，不该跟「保存」抢注意力 */
+.simple-cancel{color:var(--faint); opacity:.7}
+
+/* 设置页：导出 / 恢复 / 草稿箱 / 回收站 四个横排 */
+.four-row{display:flex; gap:8px; margin-top:12px}
+.four-row > .btn{flex:1 1 0; min-width:0; padding:0 4px; white-space:nowrap}

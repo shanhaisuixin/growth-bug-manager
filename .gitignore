@@ -1,0 +1,42 @@
+node_modules/
+.DS_Store
+Thumbs.db
+*.log
+_private/
+web/dist/
+*.local
+
+# 内部工作记录：写给作者自己看的（对着人说话的语气、含「你说…」这类句子），
+# 不属于产品本身，别跟着仓库公开出去。文件还在本地。
+ISSUES.md
+
+# tools/shot.js 无头截图生成的图（临时看的，不进版本库）
+/shots/
+/shots-*/
+
+# 安卓构建产物（都是生成的，不进版本库）
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/.idea/
+*.iml
+
+# 签名密钥 —— 绝对不能进仓库
+*.keystore
+*.jks
+*.p12
+*.mobileprovision
+keystore.properties
+
+# iOS 构建产物 / Xcode 的本地状态（都是生成的，不进版本库）
+ios/build/
+ios/DerivedData/
+ios/*.xcodeproj/
+ios/*.xcworkspace/
+xcuserdata/
+*.xcuserstate
+ios/.xcodegen/
+
+# 下载页里的 APK 本体不进版本库（3MB 二进制，正式发布走 Release）
+web-simple/download/*.apk

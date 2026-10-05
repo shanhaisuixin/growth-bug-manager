@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#F9F8F4">
+<title>行迹 · 下载</title>
+<link rel="icon" href="../assets/icon-192.png" type="image/png">
+<style>
+  :root{
+    --paper:#F9F8F4; --ink:#2A2730; --faint:#9A95A6;
+    --accent:#E46A6A; --accent-deep:#C25555; --accent-soft:rgba(228,106,106,.10);
+    --edge:rgba(42,39,48,.10); --card:#FFFFFF;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{ --paper:#141519; --ink:#ECEAF1; --faint:#7C7889; --card:#1D1E24;
+           --edge:rgba(236,234,241,.12); --accent-soft:rgba(228,106,106,.16); }
+  }
+  *{margin:0; padding:0; box-sizing:border-box}
+  body{
+    font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+    background:var(--paper); color:var(--ink); min-height:100vh;
+    display:flex; flex-direction:column; align-items:center;
+    padding:0 20px calc(40px + env(safe-area-inset-bottom));
+    -webkit-font-smoothing:antialiased;
+  }
+  .hero{width:100%; max-width:420px; text-align:center; padding:56px 0 8px}
+  .logo{
+    width:88px; height:88px; border-radius:24px; margin:0 auto 18px;
+    background:url("../assets/icon-192.png") center/cover no-repeat;
+    box-shadow:0 14px 34px -14px rgba(0,0,0,.35);
+  }
+  h1{font-size:26px; letter-spacing:.06em}
+  .sub{color:var(--faint); font-size:14.5px; margin-top:10px; line-height:1.8}
+  .ver{display:inline-block; margin-top:12px; font-size:12.5px; color:var(--accent-deep);
+       background:var(--accent-soft); border:1px solid var(--edge);
+       border-radius:99px; padding:3px 12px}
+  .col{width:100%; max-width:420px; display:flex; flex-direction:column; gap:14px; margin-top:26px}
+  .btn{
+    display:flex; align-items:center; gap:14px; width:100%;
+    background:var(--card); border:1px solid var(--edge); border-radius:20px;
+    padding:18px 18px; text-decoration:none; color:var(--ink);
+    font-family:inherit; font-size:inherit; text-align:left; cursor:pointer;
+    box-shadow:0 10px 26px -18px rgba(0,0,0,.3);
+    transition:transform .18s ease;
+  }
+  .btn:active{transform:scale(.97)}
+  .btn .ic{
+    flex:0 0 52px; width:52px; height:52px; border-radius:16px;
+    display:flex; align-items:center; justify-content:center;
+    font-size:26px; color:#fff;
+  }
+  .btn.android .ic{background:linear-gradient(135deg,#5AA06A,#3FA9A0)}
+  .btn.ios .ic{background:linear-gradient(135deg,#4F7FD6,#8A6BD1)}
+  .btn b{font-size:16.5px; display:block; letter-spacing:.03em}
+  .btn small{color:var(--faint); font-size:12.5px; display:block; margin-top:3px}
+  .btn .arrow{margin-left:auto; color:var(--faint); font-size:20px}
+  .guide{
+    width:100%; max-width:420px; margin-top:18px;
+    background:var(--card); border:1px solid var(--edge); border-radius:20px;
+    padding:18px; display:none;
+  }
+  .guide.show{display:block}
+  .guide h2{font-size:15px; margin-bottom:10px}
+  .guide ol{padding-left:20px; color:var(--faint); font-size:13.5px; line-height:2}
+  .note{
+    width:100%; max-width:420px; margin-top:18px;
+    color:var(--faint); font-size:12.5px; line-height:1.9; text-align:center;
+  }
+  a.link{color:var(--accent-deep)}
+</style>
+</head>
+<body>
+
+  <div class="hero">
+    <div class="logo"></div>
+    <h1>行迹</h1>
+    <div class="sub">人生 Bug 管理器<br>纯本地 · 零权限 · 零联网</div>
+    <span class="ver">v1.1.0</span>
+  </div>
+
+  <div class="col">
+    <a class="btn android" href="growth-bug-v1.1.0.apk" download>
+      <span class="ic">🤖</span>
+      <span><b>安卓版下载</b><small>APK · 3.1MB · Android 7.0 及以上</small></span>
+      <span class="arrow">↓</span>
+    </a>
+    <button class="btn ios" id="iosBtn" type="button">
+      <span class="ic"></span>
+      <span><b>iPhone 版安装</b><small>官方 PWA 方式 · Safari 三步加到主屏</small></span>
+      <span class="arrow">›</span>
+    </button>
+  </div>
+
+  <div class="guide" id="iosGuide">
+    <h2>iPhone 安装三步（用 Safari）</h2>
+    <ol>
+      <li>点上面的「iPhone 版安装」，用 Safari 打开网页版</li>
+      <li>点 Safari 底部中间的「分享」按钮（方框加箭头）</li>
+      <li>选「添加到主屏幕」→ 确认。主屏上就有「行迹」图标了</li>
+    </ol>
+  </div>
+
+  <div class="note">
+    数据全部存在你自己的手机里，不联网、无账号。<br>
+    卸载或换机前，请先在应用「设置」里导出备份。<br>
+    <a class="link" href="../">直接打开网页版</a>
+  </div>
+
+<script>
+  document.getElementById('iosBtn').addEventListener('click', function () {
+    document.getElementById('iosGuide').classList.add('show');
+    window.open('../', '_blank');
+  });
+</script>
+</body>
+</html>

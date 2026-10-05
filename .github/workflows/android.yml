@@ -1,0 +1,270 @@
+name: 打包安卓 APK
+
+# 什么时候跑：
+#   · 动了网页或安卓壳，推到 master —— 顺手出一个 APK 验一验
+#   · 手动触发（Actions 页面点 Run workflow）
+#   · 打了个 v* 的 tag —— 顺手发一个 Release，App 里的「检查更新」就是读这个
+on:
+  push:
+    branches: [master, main]
+    tags: ['v*']
+  pull_request:
+    paths:
+      - 'web-simple/**'
+      - 'android/**'
+      - '.github/workflows/android.yml'
+  workflow_dispatch:
+
+# 打 tag 那条路要建 Release，需要写权限
+permissions:
+  contents: write
+
+jobs:
+  # ---------------------------------------------------------------- 先验网页
+  # 网页是唯一真源，它不过关就别浪费时间去编 APK。
+  web-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: 装 jsdom（只给冒烟测试用，不进仓库）
+        run: npm install --no-save jsdom@30.1.1
+
+      - name: 跑冒烟测试
+        run: node tools/smoke-simple.js
+
+  # ---------------------------------------------------------------- 再编 APK
+  apk:
+    needs: web-check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 版本号对得上吗（安卓和网页必须是同一个数）
+        run: |
+          set -e
+          GV=$(grep -oE "versionName '[^']+'" android/app/build.gradle | head -1 | sed "s/versionName '//;s/'//")
+          WV=$(grep -oE "version: '[^']+'" web-simple/js/store.js | head -1 | sed "s/version: '//;s/'//")
+          echo "安卓 versionName = $GV"
+          echo "网页 Store.APP.version = $WV"
+          [ "$GV" = "$WV" ] || { echo "!! 版本号不一致，先去改成一样的"; exit 1; }
+
+      - name: 装 JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      # 不用 android-actions/setup-android：它内部会去装一个已经下架的 `tools` 包，
+      # 直接报 "Failed to find package 'tools'" 挂掉。而 runner 镜像本来就带好了 SDK，
+      # 所以只要接受许可 + 告诉 Gradle SDK 在哪就行，缺的组件 Gradle 会自己下。
+      - name: 准备 Android SDK
+        run: |
+          set -e
+          SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          echo "SDK 位置：$SDK"
+          [ -d "$SDK" ] || { echo "!! runner 上没找到 Android SDK"; exit 1; }
+          CMDLINE=$(ls -d "$SDK"/cmdline-tools/*/ 2>/dev/null | head -1)
+          [ -n "$CMDLINE" ] || { echo "!! 没找到 cmdline-tools"; ls -la "$SDK"; exit 1; }
+          echo "cmdline-tools：$CMDLINE"
+          yes | "$CMDLINE/bin/sdkmanager" --licenses > /dev/null 2>&1 || true
+          echo "sdk.dir=$SDK" > android/local.properties
+          echo "ANDROID_SDK=$SDK" >> "$GITHUB_ENV"
+          echo "写好了 android/local.properties"
+
+      # 也不指望 setup-gradle 的 gradle-version，直接下发行包，行为完全确定
+      - name: 装 Gradle 8.7
+        run: |
+          set -e
+          curl -fsSL -o "$RUNNER_TEMP/gradle.zip" \
+            https://services.gradle.org/distributions/gradle-8.7-bin.zip
+          unzip -q "$RUNNER_TEMP/gradle.zip" -d "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/gradle-8.7/bin" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/gradle-8.7/bin/gradle" --version
+
+      - name: 复用 Gradle 缓存（依赖和构建产物）
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/jdks
+          key: gradle-${{ runner.os }}-8.7-${{ hashFiles('android/**/*.gradle') }}
+          restore-keys: gradle-${{ runner.os }}-8.7-
+
+      # debug 签名用的密钥留在缓存里。不缓存的话每次构建都是一把新 key，
+      # 手机上就得先卸载再装（数据会没），很烦人。
+      - name: 复用上回的 debug 签名密钥
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: gbm-debug-keystore-v1
+
+      - name: 编 APK
+        working-directory: android
+        env:
+          KS_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASS: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -e
+          TASK=assembleDebug
+          ARGS=""
+          if [ -n "$KS_B64" ]; then
+            echo "有正式签名密钥，出签过名的 release 包"
+            printf '%s' "$KS_B64" | base64 -d > "$RUNNER_TEMP/gbm.keystore"
+            TASK=assembleRelease
+            ARGS="-PGBM_STORE_FILE=$RUNNER_TEMP/gbm.keystore -PGBM_STORE_PASSWORD=$KS_PASS -PGBM_KEY_ALIAS=$KEY_ALIAS -PGBM_KEY_PASSWORD=$KEY_PASS"
+          else
+            echo "没配正式密钥，出测试签名包（能装能试，不适合上架）"
+          fi
+          gradle "$TASK" $ARGS
+          if [ "$TASK" = "assembleRelease" ]; then
+            echo "VARIANT=release" >> "$GITHUB_ENV"
+          else
+            echo "VARIANT=debug" >> "$GITHUB_ENV"
+          fi
+
+      # ---------------------------------------------------------- 验收
+      - name: 验收产物（别把坏包发出去）
+        run: |
+          set -e
+          APK=$(find android/app/build/outputs/apk -name '*.apk' | head -1)
+          [ -n "$APK" ] || { echo "!! 没找到 APK"; exit 1; }
+          echo "产物：$APK"
+          ls -lh "$APK"
+          echo "大小：$(( $(stat -c%s "$APK") / 1024 )) KB"
+          echo "签名：$VARIANT"
+
+          # 包体里不该有 lib/ —— 我们一行原生代码都没有，
+          # 所以没有 arm64/x86 之分，装到 arm64 手机上照样跑、包体还最小。
+          if unzip -l "$APK" | grep -qE ' lib/'; then
+            echo "!! 包里出现了 lib/，说明混进了原生库，得补 abiFilters"; exit 1
+          fi
+          echo "OK 包体里没有原生库（不存在架构之分）"
+
+          # 网页真的打进去了吗
+          for f in assets/index.html assets/assets/style.css assets/js/app.js \
+                   assets/js/poem-data.js assets/js/poem.js assets/sw.js; do
+            unzip -l "$APK" | grep -q " $f" || { echo "!! 缺文件：$f"; exit 1; }
+          done
+          echo "OK 网页全部打进包了"
+
+          # 不该有 AI 的残留
+          if unzip -l "$APK" | grep -q 'assets/js/ai.js'; then
+            echo "!! ai.js 混进来了"; exit 1
+          fi
+          echo "OK 没有 ai.js 残留"
+
+          # 简洁版里这几样是明确砍掉的：拆分 / 整理 / 去口水词。
+          # 它们的实现文件不该出现在包里。
+          for f in assets/js/local.js assets/js/text.js; do
+            if unzip -l "$APK" | grep -q " $f"; then
+              echo "!! 简洁版里不该有 $f（整理/拆分那套已经砍了）"; exit 1
+            fi
+          done
+          echo "OK 没有整理/拆分的实现文件"
+
+          # ----------------------------------------------------------
+          # 这个包**一条权限都不能有**。这是产品的核心承诺，必须在上包前卡死。
+          # 先看源码（一定是准的），再用 aapt 验一遍真正打出来的包。
+          #
+          # 注意：这里要先把 XML 注释剥掉再找。Manifest 的注释里写着
+          # 「这里一条 <uses-permission> 都没有」——直接 grep 会把这句注释
+          # 当成真声明，把自己卡住（第一次就是这么挂的）。
+          # ----------------------------------------------------------
+          python3 - <<'PY'
+          import re, sys
+          s = open('android/app/src/main/AndroidManifest.xml', encoding='utf-8').read()
+          s = re.sub(r'<!--.*?-->', '', s, flags=re.S)
+          if '<uses-permission' in s:
+              print('!! Manifest 里出现了权限声明，这个包不允许有任何权限')
+              sys.exit(1)
+          print('OK 源码 Manifest 里没有任何权限声明')
+          PY
+
+          AAPT=$(ls "$ANDROID_SDK"/build-tools/*/aapt 2>/dev/null | sort -V | tail -1)
+          if [ -n "$AAPT" ]; then
+            echo "用 $AAPT 验一遍真包"
+            "$AAPT" dump permissions "$APK" | tee "$RUNNER_TEMP/perms.txt"
+            echo "-----------------------------------------------------"
+
+            # 判据一（最要紧的）：包里不许出现任何 **系统权限**。
+            # 用户能在「权限管理」里看到、能被弹窗问的，全都是 android.permission.*
+            # 这一命名空间下的。这里一条都不许有。
+            if grep -q 'android\.permission\.' "$RUNNER_TEMP/perms.txt"; then
+              echo "!! 包里带了系统权限，不能发："
+              grep 'android\.permission\.' "$RUNNER_TEMP/perms.txt"
+              exit 1
+            fi
+            echo "OK 一条系统权限都没有（权限管理里不会有任何入口）"
+
+            # 判据二：uses-permission 只许有一条 —— AndroidX 自动加的那条
+            #   <applicationId>.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION
+            # 它是 App 定义给自己的、签名级的，只用来保护 App 内部动态注册的广播接收器，
+            # 不向用户索取任何东西，也不是 android.permission.* 下面的东西。
+            # 删不掉（appcompat 内部要用），但可以精确地认住它。
+            # 除了它，多出任何一条都要拦下来。
+            BAD=$(grep 'uses-permission' "$RUNNER_TEMP/perms.txt" \
+                  | grep -v "name='com\.fengxiao\.gbm\.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION'" \
+                  || true)
+            if [ -n "$BAD" ]; then
+              echo "!! 出现了不该有的权限声明："; echo "$BAD"; exit 1
+            fi
+            echo "OK 除了 AndroidX 那条自用权限，没有任何申请"
+          else
+            echo "（runner 上没找到 aapt，跳过真包校验，源码那关已经过了）"
+          fi
+
+      - name: 把包传上来
+        uses: actions/upload-artifact@v4
+        with:
+          name: 成长Bug-APK-${{ env.VARIANT }}
+          path: android/app/build/outputs/apk/**/*.apk
+          if-no-files-found: error
+
+  # ---------------------------------------------------------------- 发 Release
+  # 只有打了 v* 的 tag 才走这里。App 里的「检查更新」读的就是这个 Release。
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: apk
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+
+      # 编出来的文件名是 app-debug.apk，外人下载到手机里认不出是什么。
+      # 这里先改成「产品名-版本.apk」再上传 —— **下载直链里用的就是这个名字**（英文+数字，
+      # 中文文件名在链接里要转义，容易在群里/微信里被截断）。
+      - name: 给 APK 起个能直接放链接里的名字
+        run: |
+          set -e
+          VER="${GITHUB_REF_NAME#v}"
+          APK=$(find dist -name '*.apk' | head -1)
+          [ -n "$APK" ] || { echo "!! 没找到 APK"; exit 1; }
+          mkdir -p dist-out
+          cp "$APK" "dist-out/growth-bug-v${VER}.apk"
+          ls -lh dist-out
+
+      - name: 发 Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist-out/*.apk
+          generate_release_notes: true
+          body: |
+            用记录的方式，看清自己反复栽在哪儿。
+
+            这个 App **不申请任何权限**：不联网、不上传、不读相册通讯录。
+            记录只存在你自己手机里，备份靠 App 里的「导出 ZIP」，存在你指定的位置。
+            想看看有没有新版，点设置里的「去发布页看看」，会交给浏览器打开。
+
+            **不想装 App 也能用**：打开网页版 <https://shanhaisuixin.github.io/growth-bug-manager/>
+            （iPhone 用 Safari 打开后「添加到主屏幕」，图标、全屏、离线，跟装的 App 一样）。
+
+            安装：下载下面的 apk，在手机上点开装（第一次装需要允许「安装未知来源的应用」）。
+            卸载重装会清掉记录，换手机或者重装之前记得先导出备份。

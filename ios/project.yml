@@ -1,0 +1,63 @@
+# 个人成长 Bug 管理器 —— iOS 壳（只有一个 WKWebView）
+#
+# 用 XcodeGen 生成 .xcodeproj，不把 pbxproj 放进版本库：
+#   brew install xcodegen
+#   cd ios && xcodegen generate && open GBM.xcodeproj
+#
+# 为什么不手写 pbxproj：那是一份几百行的 UUID 表，手改必错，
+# 而且每次合并都冲突。project.yml 是人能读的那一份真源。
+#
+# 跟安卓那边保持同一套约定：
+#   · web-simple/ 是唯一真源，这里不维护第二份网页副本（见下面的 sources）
+#   · User-Agent 打 GBMShell/1.0 标记，网页看到就不注册 Service Worker
+#   · 提供 GBMShell 桥（导出用）和 GBM_EXPORT_DONE 回调
+#   · 一条权限都不申请：导出/导入走系统文件选择器，检查更新交给 Safari
+
+name: GBM
+
+options:
+  bundleIdPrefix: com.fengxiao
+  deploymentTarget:
+    iOS: "15.0"
+  createIntermediateGroups: true
+  groupSortPosition: top
+
+settings:
+  base:
+    MARKETING_VERSION: "1.0.0"
+    CURRENT_PROJECT_VERSION: "1"
+    SWIFT_VERSION: "5.0"
+    # 只保留中文和英文，省掉没用的本地化资源
+    DEVELOPMENT_LANGUAGE: zh-Hans
+
+targets:
+  GBM:
+    type: application
+    platform: iOS
+    sources:
+      # 壳自己的 Swift 代码和 Info.plist
+      - path: GBM
+      # 网页整个目录原样拷进 App 包（folder reference，不做 Xcode 的组）。
+      # 这样改网页不用碰 iOS 这边，跟安卓的 syncWeb 是同一个思路。
+      #
+      # 源目录是 web-simple/，但 name 钉成 web ——
+      # 包里的目录名必须还是 web/，RootViewController 读的是 web/index.html，
+      # 不然改个源目录名就得跟着改 Swift。
+      - path: ../web-simple
+        name: web
+        type: folder
+        buildPhase: resources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.fengxiao.gbm
+        PRODUCT_NAME: GBM
+        INFOPLIST_FILE: GBM/Info.plist
+        TARGETED_DEVICE_FAMILY: "1"          # 只做 iPhone：版式是按单手竖屏调的
+        ENABLE_BITCODE: NO
+        SWIFT_EMIT_LOC_STRINGS: NO
+        # App 里没有一行原生依赖，不需要这些
+        CLANG_ENABLE_MODULES: YES
+        ALWAYS_SEARCH_USER_PATHS: NO
+        # 用不到的任何权限相关的构建设置都不要
+        GENERATE_INFOPLIST_FILE: NO
+        ASSETCATALOG_COMPILER_APPICON_NAME: ""   # 图标直接引用 web-simple/assets 里的 PNG

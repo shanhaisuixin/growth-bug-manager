@@ -1,0 +1,22 @@
+# Windows 上检出成 CRLF，仓库里一律存 LF。
+# 仓库里存 LF 很重要：CI 跑在 Linux 上，脚本带 CRLF 会莫名其妙地失败。
+* text=auto eol=lf
+
+# 这些必须是 LF，多一个 \r 就出事
+*.sh        text eol=lf
+gradlew     text eol=lf
+*.gradle    text eol=lf
+*.yml       text eol=lf
+*.java      text eol=lf
+*.js        text eol=lf
+*.css       text eol=lf
+*.html      text eol=lf
+*.xml       text eol=lf
+
+# 二进制，别当文本处理
+*.png       binary
+*.jpg       binary
+*.webp      binary
+*.zip       binary
+*.apk       binary
+*.keystore  binary

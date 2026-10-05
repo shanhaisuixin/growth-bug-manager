@@ -1,0 +1,59 @@
+name: 发布网页版（GitHub Pages）
+
+# 这个流程产出的那个网址，就是 iPhone 用户点开、然后「添加到主屏幕」的地方。
+# 苹果不让「点链接直接装 App」免费存在，所以这就是 iPhone 上最省事的一条路：
+# 打开链接 → 分享 → 添加到主屏幕 → 图标、全屏、离线，跟装的 App 一样。
+#
+# 第一次推上去之后还要手动开一下：
+#   仓库 Settings → Pages → Source 选「GitHub Actions」
+# 开完之后地址是：
+#   https://<你的用户名>.github.io/<仓库名>/
+
+# 只手动触发，**不挂推送**。
+#
+# 为什么不挂推送：GitHub 免费套餐不允许私有仓库用 Pages，
+# 所以只要仓库还是私有的，每次推送这条流程都必然失败一次，
+# 然后给你发一封「网页版推送失败」的邮件 —— 纯噪音。
+# 等仓库转公开、Pages 真的能用了，再把上面的 push 触发加回来。
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 同一时间只跑一次部署；排队等着的那个取消掉，别互相覆盖
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: 跑一遍冒烟测试（坏的页面不许上线）
+        run: |
+          set -e
+          npm install --no-save jsdom@30.1.1
+          node tools/smoke-simple.js
+
+      - name: 打包网页（只要 web-simple/，不含构建脚本和安卓/iOS 工程）
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: web-simple
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4

@@ -1,0 +1,122 @@
+/* 个人成长 Bug 管理器 —— 安卓壳（只有一个 WebView）
+
+   设计取舍，写在这儿免得以后自己忘了：
+   · 唯一真源是仓库根目录的 web-simple/。这里不做第二份网页副本，
+     构建时整目录搬进 assets（见下面的 syncWeb），改网页不用碰安卓这边。
+   · 用 WebViewAssetLoader 挂到 https://appassets.androidplatform.net/assets/。
+     这是个「安全来源」，IndexedDB / localStorage / Service Worker 都能正常用；
+     直接开 file:// 的话 IndexedDB 会被当成不透明来源拒掉，存档就废了。
+   · 一条权限都不申请（Manifest 里连 INTERNET 都没有，故意留白）。
+     不联网、不上传、不读相册通讯录。导出备份走系统文件选择器（SAF），
+     检查更新是把发布页交给系统浏览器 —— 这两件事都不需要权限。
+     自动备份也关掉了（allowBackup=false），免得系统悄悄把你的记录传去云备份。
+   · 没有一行原生代码，所以 APK 里没有 lib/ 目录 —— 也就不存在
+     arm64 / x86 的区分。同一个包在 arm64 手机上跑得一样好，包体反而最小。
+     （以后万一加了 .so，再补 ndk { abiFilters 'arm64-v8a' }。） */
+
+plugins {
+  id 'com.android.application'
+}
+
+/* 网页是唯一真源：构建前原样拷进 assets。
+   现在打的是简洁版 web-simple/（仓库里那份更早的 web/ 留着没删，
+   以后确认不要了再清掉）。 */
+def webRoot = rootProject.file('../web-simple')
+def webAssets = layout.buildDirectory.dir('generated/web-assets')
+
+tasks.register('syncWeb', Sync) {
+  description = '把仓库根目录的 web-simple/ 拷成安卓的 assets（唯一真源，不维护第二份）'
+  from(webRoot) {
+    /* 开发用的东西不进安装包 */
+    exclude '**/*.map'
+    exclude '**/.DS_Store'
+    exclude '**/download/**'   /* 下载页和它的 APK 只在网页上发，不进安装包 */'
+  }
+  into webAssets
+}
+
+android {
+  namespace 'com.fengxiao.gbm'
+  compileSdk 34
+
+  defaultConfig {
+    applicationId 'com.fengxiao.gbm'
+    minSdk 24
+    targetSdk 34
+    versionCode 2
+    versionName '1.1.0'          // 改这里要跟 web-simple/js/store.js 的 Store.APP.version 一起改
+    resourceConfigurations += ['zh', 'en']
+  }
+
+  /* 有签名密钥就签正式包；没有就落到 debug 签名（下得去装得上，能自己试）。
+     密钥通过 -P 参数或环境变量传，绝不写进仓库。 */
+  signingConfigs {
+    release {
+      if (project.hasProperty('GBM_STORE_FILE')) {
+        storeFile file(project.property('GBM_STORE_FILE'))
+        storePassword project.property('GBM_STORE_PASSWORD')
+        keyAlias project.property('GBM_KEY_ALIAS')
+        keyPassword project.property('GBM_KEY_PASSWORD')
+      }
+    }
+  }
+
+  buildTypes {
+    release {
+      minifyEnabled false          // 全是 Activity 反射调的入口，混淆没收益
+      shrinkResources false
+      if (project.hasProperty('GBM_STORE_FILE')) {
+        signingConfig signingConfigs.release
+      }
+    }
+  }
+
+  compileOptions {
+    sourceCompatibility JavaVersion.VERSION_17
+    targetCompatibility JavaVersion.VERSION_17
+  }
+
+  sourceSets {
+    main {
+      assets.srcDirs += webAssets.get().asFile
+    }
+  }
+
+  packaging {
+    resources.excludes += ['META-INF/*.version', 'META-INF/LICENSE*', 'DebugProbesKt.bin']
+  }
+
+  lint {
+    abortOnError false
+  }
+}
+
+/* 资源合并必须等网页拷完 */
+tasks.matching { it.name.startsWith('merge') && it.name.endsWith('Assets') }
+  .configureEach { dependsOn 'syncWeb' }
+
+/* lint 校验任务也会读 web-assets（Gradle 8.9 的隐式依赖检查会拦），
+   一并声明依赖，不然 release 构建直接失败 */
+tasks.matching { it.name.toLowerCase().contains('lintvital') }
+  .configureEach { dependsOn 'syncWeb' }
+
+/* 双保险：光靠上面的 kotlin-bom 对齐版本已经够了，但本机编不了、没法提前验证，
+   所以再把这两个已经并进 kotlin-stdlib 的旧拆分包直接排掉 —— 它们和 kotlin-stdlib
+   里的类是重复的，checkDuplicateClasses 一定会拦。 */
+configurations.configureEach {
+  exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk7'
+  exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk8'
+}
+
+dependencies {
+  /* kotlin-bom 用来把 kotlin-stdlib 系列对齐到同一个版本。
+     不对齐会撞重复类：某条依赖带进来的是老版拆分包 kotlin-stdlib-jdk7/jdk8:1.6.21，
+     而另一条带的是 kotlin-stdlib:1.8.22。从 Kotlin 1.8 起 jdk7/jdk8 已经并进
+     kotlin-stdlib 了，所以这两个老包和新包里的类是重复的，
+     checkDebugDuplicateClasses 会直接报 Duplicate class kotlin.collections.jdk8.CollectionsJDK8Kt。 */
+  implementation platform('org.jetbrains.kotlin:kotlin-bom:1.9.24')
+
+  implementation 'androidx.appcompat:appcompat:1.7.0'
+  implementation 'androidx.webkit:webkit:1.11.0'
+  implementation 'androidx.activity:activity:1.9.2'
+}

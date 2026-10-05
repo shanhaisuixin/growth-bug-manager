@@ -1,0 +1,5 @@
+/* 安卓壳的最外层构建脚本。
+   只有一个模块 app，真正的代码在 app/build.gradle。 */
+plugins {
+  id 'com.android.application' version '8.5.2' apply false
+}
